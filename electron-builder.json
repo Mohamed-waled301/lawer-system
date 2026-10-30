@@ -1,0 +1,38 @@
+{
+  "appId": "com.lawoffice.management",
+  "productName": "نظام إدارة مكتب المحاماة",
+  "directories": {
+    "output": "dist-electron"
+  },
+  "files": [
+    "electron/**/*",
+    ".next/standalone/**/*",
+    ".next/static/**/*",
+    "public/**/*",
+    "prisma/schema.prisma",
+    "prisma/dev.db"
+  ],
+  "extraResources": [
+    {
+      "from": "uploads",
+      "to": "uploads",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "نظام المحاماة"
+  }
+}
+

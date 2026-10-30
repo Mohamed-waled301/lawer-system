@@ -1,0 +1,318 @@
+// Prisma schema for Law Office Management System
+// SQLite by default (enums stored as String for SQLite compatibility),
+// switchable to PostgreSQL by updating provider and DATABASE_URL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  username     String        @unique
+  passwordHash String
+  name         String
+  role         String        @default("EMPLOYEE") // ADMIN, EMPLOYEE
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  activityLogs ActivityLog[]
+}
+
+model Staff {
+  id                   String         @id @default(cuid())
+  name                 String
+  role                 String         @default("LAWYER") // LAWYER, SECRETARY, ACCOUNTANT, OTHER
+  phone                String
+  email                String?
+  hireDate             DateTime?
+  barAssociationNumber String?        // رقم القيد بنقابة المحامين
+  isActive             Boolean        @default(true)
+  notes                String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  cases                Case[]
+  consultations        Consultation[]
+
+  @@index([name])
+  @@index([phone])
+}
+
+model Client {
+  id            String         @id @default(cuid())
+  clientCode    String         @unique // e.g. C-0001
+  name          String
+  nationalId    String?        // 14 digits
+  phone         String
+  address       String?
+  notes         String?
+  isDeleted     Boolean        @default(false)
+  deletedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  cases         Case[]
+  consultations Consultation[]
+  payments      Payment[]
+  documents     Document[]
+
+  @@index([clientCode])
+  @@index([name])
+  @@index([phone])
+  @@index([nationalId])
+}
+
+model CaseCategory {
+  id          String   @id @default(cuid())
+  code        String   @unique // e.g. "1", "2", "3"
+  name        String   // e.g. "جنح", "جنايات", "أحوال شخصية", "مدني", "مجلس دولة"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cases       Case[]
+
+  @@index([code])
+}
+
+model CaseStatus {
+  id          String   @id @default(cuid())
+  name        String   @unique // e.g. "تحقيق بالنيابة", "جلسات أول درجة", "استئناف", "نقض", "محكوم فيها وتنفذ", "منتهية ومغلقة", "مشطوبة"
+  isClosed    Boolean  @default(false)
+  color       String?  // e.g. "blue", "green", "amber", "red"
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cases       Case[]
+}
+
+model Case {
+  id              String              @id @default(cuid())
+  caseNumber      String              // رقم القضية
+  caseYear        Int                 // سنة القضية (e.g. 2024)
+  court           String              // المحكمة
+  circuit         String?             // الدائرة
+  
+  clientId        String
+  client          Client              @relation(fields: [clientId], references: [id])
+
+  lawyerId        String?
+  lawyer          Staff?              @relation(fields: [lawyerId], references: [id])
+
+  categoryId      String
+  category        CaseCategory        @relation(fields: [categoryId], references: [id])
+
+  statusId        String
+  status          CaseStatus          @relation(fields: [statusId], references: [id])
+
+  totalFees       Float               @default(0) // الأتعاب المتفق عليها
+  paidAmount      Float               @default(0) // المسدد
+  remainingAmount Float               @default(0) // المتبقي
+
+  nextHearingDate DateTime?           // تاريخ الجلسة القادمة
+  notes           String?
+  isDeleted       Boolean             @default(false)
+  deletedAt       DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  hearings        Hearing[]
+  payments        Payment[]
+  documents       Document[]
+  statusHistory   CaseStatusHistory[]
+
+  @@index([caseNumber, caseYear])
+  @@index([clientId])
+  @@index([lawyerId])
+  @@index([statusId])
+  @@index([categoryId])
+  @@index([nextHearingDate])
+}
+
+model CaseStatusHistory {
+  id         String   @id @default(cuid())
+  caseId     String
+  case       Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  fromStatus String
+  toStatus   String
+  changeDate DateTime @default(now())
+  changedBy  String   // اسم المستخدم الذي قام بالتغيير
+  notes      String?
+
+  @@index([caseId])
+}
+
+model Hearing {
+  id           String    @id @default(cuid())
+  caseId       String
+  case         Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  hearingDate  DateTime
+  court        String?
+  circuit      String?
+  decision     String?   // قرار المحكمة / الحكم
+  requirements String?   // المطلوب للجلسة القادمة / الطلبات
+  attendedBy   String?   // المحامي الحاضر
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([caseId])
+  @@index([hearingDate])
+}
+
+model Consultation {
+  id                 String        @id @default(cuid())
+  personName         String
+  phone              String
+  date               DateTime      @default(now())
+  subject            String        // موضوع الاستشارة
+  amountPaid         Float         @default(0)
+  paymentMethod      String        @default("CASH") // CASH, WALLET, INSTAPAY
+  transferProofPath  String?       // مسار صورة إشعار التحويل إذا لم تكن نقدية
+  notes              String?
+  
+  lawyerId           String?
+  lawyer             Staff?        @relation(fields: [lawyerId], references: [id])
+
+  clientId           String?
+  client             Client?       @relation(fields: [clientId], references: [id])
+
+  // التحويل لقضية: رسوم الاستشارة لا تخصم من رسوم القضية نهائياً وتبقى إيراداً منفصلاً
+  isConvertedToCase  Boolean       @default(false)
+  convertedCaseId    String?
+
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  payments           Payment[]
+
+  @@index([personName])
+  @@index([phone])
+  @@index([date])
+}
+
+model Treasury {
+  id            String                @id @default(cuid())
+  name          String                // خزينة النقدية الرئيسية / خزينة المحافظ / خزينة إنستاباي
+  paymentMethod String                @unique // CASH, WALLET, INSTAPAY
+  balance       Float                 @default(0) // الرصيد الحالي
+  accountNumber String?               // رقم الحساب أو المحفظة
+  description   String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  transactions  TreasuryTransaction[]
+  payments      Payment[]
+
+  @@index([paymentMethod])
+}
+
+model TreasuryTransaction {
+  id           String    @id @default(cuid())
+  treasuryId   String
+  treasury     Treasury  @relation(fields: [treasuryId], references: [id], onDelete: Cascade)
+  type         String    // DEPOSIT (إيداع/تحصيل), WITHDRAW (سحب/مصروف), TRANSFER (تحويل)
+  amount       Float
+  balanceAfter Float
+  description  String?
+  paymentId    String?
+  date         DateTime  @default(now())
+  recordedBy   String
+  createdAt    DateTime  @default(now())
+
+  @@index([treasuryId])
+  @@index([date])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  receiptNumber     String        @unique // e.g. REC-0001
+  amount            Float
+  paymentDate       DateTime      @default(now())
+  paymentMethod     String        @default("CASH") // CASH, WALLET, INSTAPAY
+  transferProofPath String?       // مسار صورة إشعار التحويل الفعلي المرفوع على القرص
+  purpose           String?       // دفعة أتعاب قضية / استشارة قانونية / ...
+  notes             String?
+
+  recordedByName    String        // من قام بتسجيل الإيصال
+  recordedById      String?
+
+  treasuryId        String?
+  treasury          Treasury?     @relation(fields: [treasuryId], references: [id], onDelete: SetNull)
+
+  caseId            String?
+  case              Case?         @relation(fields: [caseId], references: [id], onDelete: SetNull)
+
+  consultationId    String?
+  consultation      Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+
+  clientId          String?
+  client            Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([receiptNumber])
+  @@index([caseId])
+  @@index([clientId])
+  @@index([consultationId])
+  @@index([treasuryId])
+  @@index([paymentDate])
+}
+
+model Document {
+  id           String           @id @default(cuid())
+  title        String           // اسم المستند التعريفي
+  fileName     String           // اسم الملف على القرص
+  originalName String           // اسم الملف الأصلي
+  filePath     String           // المسار على القرص داخل مجلد uploads
+  fileSize     Int
+  mimeType     String
+  category     String           @default("OTHER") // POWER_OF_ATTORNEY, STATEMENT_OF_CLAIM, JUDGMENT, EXPERT_REPORT, PAYMENT_PROOF, OTHER
+  
+  caseId       String?
+  case         Case?            @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  clientId     String?
+  client       Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  uploadedBy   String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([caseId])
+  @@index([clientId])
+  @@index([category])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  userName   String
+  action     String   // CREATE, UPDATE, DELETE, STATUS_CHANGE, LOGIN, RESTORE, BACKUP
+  entityType String   // CASE, CLIENT, STAFF, PAYMENT, CONSULTATION, SETTING, USER, TREASURY
+  entityId   String?
+  details    String?
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entityType])
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
