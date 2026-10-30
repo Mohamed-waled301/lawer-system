@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
 import fs from "fs";
 import path from "path";
 import AdmZip from "adm-zip";
