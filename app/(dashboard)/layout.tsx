@@ -16,13 +16,13 @@ export default function DashboardLayout({
         <TopProgressBar />
       </Suspense>
 
-      {/* Fixed Right Sidebar */}
+      {/* Fixed Right Sidebar (hidden offscreen on mobile, visible on desktop) */}
       <Sidebar />
 
-      {/* Main Content Area (Offset by 256px on the right because of RTL sidebar) */}
-      <div className="mr-64 flex-1 flex flex-col min-w-0">
+      {/* Main Content Area (Full width on mobile/tablet, offset by 256px on desktop) */}
+      <div className="mr-0 lg:mr-64 flex-1 flex flex-col min-w-0 transition-all duration-200">
         <Header />
-        <main className="flex-1 p-6 lg:p-8 max-w-7xl w-full mx-auto">{children}</main>
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">{children}</main>
       </div>
     </div>
   );

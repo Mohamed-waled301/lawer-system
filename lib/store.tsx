@@ -97,6 +97,11 @@ interface AppContextType {
   activities: StoredActivity[];
   logActivity: (action: string, entityType: string, details: string) => void;
   resetToDefaultData: () => void;
+
+  // Mobile Menu
+  isMobileMenuOpen: boolean;
+  setMobileMenuOpen: (open: boolean) => void;
+  toggleMobileMenu: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -117,6 +122,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<StoredCategory[]>(INITIAL_DATA.categories);
   const [statuses, setStatuses] = useState<StoredStatus[]>(INITIAL_DATA.statuses);
   const [activities, setActivities] = useState<StoredActivity[]>(INITIAL_DATA.activities);
+  const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
 
   // Load from LocalStorage
   useEffect(() => {
@@ -860,6 +868,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         activities,
         logActivity,
         resetToDefaultData,
+        isMobileMenuOpen,
+        setMobileMenuOpen,
+        toggleMobileMenu,
       }}
     >
       {children}
