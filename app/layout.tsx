@@ -9,6 +9,8 @@ const cairo = Cairo({
   variable: "--font-cairo",
 });
 
+import { AppProvider } from "@/lib/store";
+
 export const metadata: Metadata = {
   title: "نظام إدارة مكتب المحاماة",
   description: "نظام رسمي متكامل لإدارة القضايا والاستشارات والموكلين وحسابات الأتعاب",
@@ -22,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" className={cairo.variable}>
       <body className="font-sans min-h-screen bg-slate-100/60 text-slate-900">
-        {children}
+        <AppProvider>{children}</AppProvider>
       </body>
     </html>
   );

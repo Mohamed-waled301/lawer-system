@@ -3,32 +3,34 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  ArrowRight,
-  Briefcase,
-  UserCheck,
-  CheckCircle2,
-  Clock,
-  History,
-  Save,
-  AlertCircle,
-} from "lucide-react";
-import { changeCaseStatus } from "@/actions/cases";
+import { ArrowRight, Save, AlertCircle, History } from "lucide-react";
+import { useApp } from "@/lib/store";
 import { formatDate } from "@/lib/utils";
 
-interface Props {
-  caseItem: any;
-  statuses: Array<{ id: string; name: string; isClosed: boolean }>;
-}
-
-export function CaseStatusChangeForm({ caseItem, statuses }: Props) {
+export function CaseStatusChangeForm({ caseId }: { caseId: string }) {
   const router = useRouter();
-  const [selectedStatusId, setSelectedStatusId] = useState(caseItem.statusId);
+  const { cases, clients, statuses, changeCaseStatus } = useApp();
+
+  const caseItem = cases.find((c) => c.id === caseId);
+  const client = clients.find((cl) => cl.id === caseItem?.clientId);
+
+  const [selectedStatusId, setSelectedStatusId] = useState(caseItem?.statusId || "");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  if (!caseItem) {
+    return (
+      <div className="p-8 text-center text-slate-500 text-xs">
+        القضية غير موجودة.
+      </div>
+    );
+  }
+
+  const currentStatusObj = statuses.find((s) => s.id === caseItem.statusId);
+  const selectedStatusObj = statuses.find((s) => s.id === selectedStatusId);
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -39,27 +41,13 @@ export function CaseStatusChangeForm({ caseItem, statuses }: Props) {
 
     setIsSubmitting(true);
     try {
-      const res = await changeCaseStatus({
-        caseId: caseItem.id,
-        newStatusId: selectedStatusId,
-        notes,
-      });
-
-      if (res.success) {
-        router.push(`/cases/${caseItem.id}`);
-        router.refresh();
-      } else {
-        setError(res.error || "حدث خطأ أثناء تحديث حالة القضية");
-        setIsSubmitting(false);
-      }
+      changeCaseStatus(caseItem.id, selectedStatusId, notes);
+      router.push(`/cases/${caseItem.id}`);
     } catch {
-      setError("حدث خطأ غير متوقع");
+      setError("حدث خطأ أثناء تحديث حالة القضية");
       setIsSubmitting(false);
     }
   };
-
-  const currentStatusObj = statuses.find((s) => s.id === caseItem.statusId);
-  const selectedStatusObj = statuses.find((s) => s.id === selectedStatusId);
 
   return (
     <div className="space-y-6">
@@ -83,7 +71,7 @@ export function CaseStatusChangeForm({ caseItem, statuses }: Props) {
               </span>
               <span>•</span>
               <span className="font-semibold text-slate-700">
-                الموكل: {caseItem.client.name}
+                الموكل: {client?.name}
               </span>
             </div>
           </div>
@@ -113,7 +101,7 @@ export function CaseStatusChangeForm({ caseItem, statuses }: Props) {
           </span>
           <div className="flex items-center gap-2">
             <span className="text-sm font-black text-slate-900">
-              {currentStatusObj?.name || caseItem.status?.name}
+              {currentStatusObj?.name || "متداولة"}
             </span>
             {currentStatusObj?.isClosed ? (
               <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">
@@ -208,15 +196,15 @@ export function CaseStatusChangeForm({ caseItem, statuses }: Props) {
           </div>
 
           <div className="divide-y divide-slate-100 text-xs">
-            {caseItem.statusHistory.map((h: any) => (
+            {caseItem.statusHistory.map((h) => (
               <div key={h.id} className="py-3 flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-slate-900">
-                      {h.fromStatus?.name || "بداية القيد"} ← {h.toStatus.name}
+                      {h.fromStatus} ← {h.toStatus}
                     </span>
                     <span className="text-[10px] text-slate-400">
-                      بواسطة: {h.changedByName}
+                      بواسطة: {h.changedBy}
                     </span>
                   </div>
                   {h.notes && (
@@ -224,7 +212,7 @@ export function CaseStatusChangeForm({ caseItem, statuses }: Props) {
                   )}
                 </div>
                 <span className="text-[11px] text-slate-400 font-mono">
-                  {formatDate(h.createdAt)}
+                  {formatDate(h.changeDate)}
                 </span>
               </div>
             ))}
@@ -234,4 +222,3 @@ export function CaseStatusChangeForm({ caseItem, statuses }: Props) {
     </div>
   );
 }
-

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useApp } from "@/lib/store";
 import {
   LayoutDashboard,
   Users,
@@ -12,6 +13,7 @@ import {
   Settings,
   Scale,
   Vault,
+  RotateCcw,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -21,6 +23,11 @@ interface SidebarProps {
 
 export function Sidebar({ userRole, userName }: SidebarProps) {
   const pathname = usePathname();
+  const { currentUser, resetToDefaultData } = useApp();
+
+  const effectiveRole = currentUser?.role || userRole || "ADMIN";
+  const effectiveName = currentUser?.name || userName || "الأستاذ / محمد وليد";
+  const isAdmin = effectiveRole === "ADMIN";
 
   const links = [
     {
@@ -47,8 +54,7 @@ export function Sidebar({ userRole, userName }: SidebarProps) {
       icon: MessageSquare,
       active: pathname.startsWith("/consultations"),
     },
-    // Only admin can see financial reports/payments & treasury directly
-    ...(userRole === "ADMIN"
+    ...(isAdmin
       ? [
           {
             label: "الخزائن وحسابات الدفع",
@@ -115,21 +121,29 @@ export function Sidebar({ userRole, userName }: SidebarProps) {
         })}
       </nav>
 
-      {/* User Information in Footer */}
-      <div className="p-4 border-t border-slate-800 bg-slate-950/50">
+      {/* Demo Reset + User Information in Footer */}
+      <div className="p-4 border-t border-slate-800 bg-slate-950/50 space-y-3">
+        {/* Quick Demo Reset Button for testing on Vercel */}
+        <button
+          onClick={resetToDefaultData}
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded text-[11px] font-semibold border border-slate-700 transition-colors"
+          title="إعادة تعيين كافة البيانات إلى بيانات التجربة الأصلية"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>إعادة ضبط بيانات التجربة (Reset Demo)</span>
+        </button>
+
         <div className="flex items-center justify-between">
           <div className="overflow-hidden">
-            <p className="text-sm font-semibold text-slate-200 truncate">
-              {userName || "المستخدم الحالي"}
-            </p>
+            <p className="text-sm font-semibold text-slate-200 truncate">{effectiveName}</p>
             <span
               className={`inline-block px-2 py-0.5 mt-1 text-[11px] font-medium rounded ${
-                userRole === "ADMIN"
+                isAdmin
                   ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
                   : "bg-slate-800 text-slate-300 border border-slate-700"
               }`}
             >
-              {userRole === "ADMIN" ? "مدير النظام (كامل الصلاحيات)" : "موظف / سكرتارية"}
+              {isAdmin ? "مدير النظام (كامل الصلاحيات)" : "موظف / سكرتارية"}
             </span>
           </div>
         </div>

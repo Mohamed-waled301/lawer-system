@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { logoutAction } from "@/actions/auth";
+import { useApp } from "@/lib/store";
 import { LogOut, Calendar, Shield } from "lucide-react";
 import { useState } from "react";
 
@@ -12,14 +12,17 @@ interface HeaderProps {
 
 export function Header({ userName, userRole }: HeaderProps) {
   const router = useRouter();
+  const { currentUser, logout } = useApp();
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const handleLogout = async () => {
+  const effectiveName = currentUser?.name || userName || "الأستاذ / محمد وليد";
+  const effectiveRole = currentUser?.role || userRole || "ADMIN";
+
+  const handleLogout = () => {
     if (confirm("هل ترغب بالفعل في تسجيل الخروج؟")) {
       setLoggingOut(true);
-      await logoutAction();
+      logout();
       router.push("/login");
-      router.refresh();
     }
   };
 
@@ -42,11 +45,11 @@ export function Header({ userName, userRole }: HeaderProps) {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded border border-slate-200">
           <Shield className="w-3.5 h-3.5 text-navy-700" />
-          <span>الدخول بواسطة:</span>
-          <span className="font-semibold text-slate-800">{userName || "المستخدم"}</span>
+          <span>المستخدم:</span>
+          <span className="font-semibold text-slate-800">{effectiveName}</span>
           <span className="text-slate-400">|</span>
           <span className="text-slate-700">
-            {userRole === "ADMIN" ? "مدير" : "موظف"}
+            {effectiveRole === "ADMIN" ? "مدير النظام" : "موظف / سكرتارية"}
           </span>
         </div>
 
@@ -63,4 +66,3 @@ export function Header({ userName, userRole }: HeaderProps) {
     </header>
   );
 }
-

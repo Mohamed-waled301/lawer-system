@@ -3,35 +3,40 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, Edit, Save, AlertCircle } from "lucide-react";
-import { updateClient } from "@/actions/clients";
+import { ArrowRight, Save, AlertCircle } from "lucide-react";
+import { useApp } from "@/lib/store";
 
-export function ClientEditForm({ client }: { client: any }) {
+export function ClientEditForm({ clientId }: { clientId: string }) {
   const router = useRouter();
+  const { clients, updateClient } = useApp();
+  const client = clients.find((c) => c.id === clientId);
+
   const [formData, setFormData] = useState({
-    name: client.name || "",
-    nationalId: client.nationalId || "",
-    phone: client.phone || "",
-    address: client.address || "",
-    notes: client.notes || "",
+    name: client?.name || "",
+    nationalId: client?.nationalId || "",
+    phone: client?.phone || "",
+    address: client?.address || "",
+    notes: client?.notes || "",
   });
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  if (!client) {
+    return (
+      <div className="p-8 text-center text-slate-500 text-xs">
+        الموكل غير موجود.
+      </div>
+    );
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
 
     try {
-      const res = await updateClient(client.id, formData);
-      if (res.success) {
-        router.push(`/clients/${client.id}`);
-        router.refresh();
-      } else {
-        setError(res.error || "فشل تعديل بيانات الموكل");
-        setIsSubmitting(false);
-      }
+      updateClient(client.id, formData);
+      router.push(`/clients/${client.id}`);
     } catch {
       setError("حدث خطأ أثناء حفظ التعديلات");
       setIsSubmitting(false);
@@ -51,44 +56,52 @@ export function ClientEditForm({ client }: { client: any }) {
             <ArrowRight className="w-4 h-4" />
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <Edit className="w-5 h-5 text-navy-800" />
-              <span>تعديل بيانات الموكل: {client.name}</span>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              تعديل بيانات الموكل: {client.name}
             </h1>
-            <p className="text-xs text-slate-500 mt-0.5 font-mono">
-              كود الموكل: {client.clientCode}
+            <p className="text-xs text-slate-500 mt-0.5">
+              كود الموكل: <span className="font-mono font-bold">{client.clientCode}</span>
             </p>
           </div>
         </div>
+
+        <Link
+          href={`/clients/${client.id}`}
+          className="px-3 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded"
+        >
+          إلغاء وعودة
+        </Link>
       </div>
 
       {/* Main Form */}
-      <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-6 md:p-8">
-        <form onSubmit={handleSubmit} className="space-y-6 text-xs">
+      <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
-            <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 rounded-md flex items-center gap-2 text-xs font-medium">
+            <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block font-bold text-slate-700 mb-1.5">
-                الاسم الرباعي أو الثلاثي *
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
+            {/* Name */}
+            <div className="md:col-span-2">
+              <label className="block font-bold text-slate-700 mb-1">
+                اسم الموكل بالكامل <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 required
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                className="w-full px-3 py-2.5 border border-slate-300 rounded focus:ring-1 focus:ring-slate-900 focus:outline-none"
               />
             </div>
 
+            {/* National ID */}
             <div>
-              <label className="block font-bold text-slate-700 mb-1.5">
-                الرقم القومي (14 رقماً)
+              <label className="block font-bold text-slate-700 mb-1">
+                الرقم القومي (14 رقم)
               </label>
               <input
                 type="text"
@@ -97,63 +110,63 @@ export function ClientEditForm({ client }: { client: any }) {
                 onChange={(e) =>
                   setFormData({ ...formData, nationalId: e.target.value })
                 }
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none font-mono"
-                dir="ltr"
+                className="w-full px-3 py-2.5 border border-slate-300 rounded font-mono focus:ring-1 focus:ring-slate-900 focus:outline-none"
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Phone */}
             <div>
-              <label className="block font-bold text-slate-700 mb-1.5">
-                رقم الهاتف المحمول الأساسي *
+              <label className="block font-bold text-slate-700 mb-1">
+                رقم الهاتف / الواتساب <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 required
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none font-mono"
                 dir="ltr"
+                className="w-full px-3 py-2.5 border border-slate-300 rounded font-mono text-right focus:ring-1 focus:ring-slate-900 focus:outline-none"
               />
             </div>
 
-            <div>
-              <label className="block font-bold text-slate-700 mb-1.5">
-                العنوان بالتفصيل
+            {/* Address */}
+            <div className="md:col-span-2">
+              <label className="block font-bold text-slate-700 mb-1">
+                محل الإقامة / العنوان بالتفصيل
               </label>
               <input
                 type="text"
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                className="w-full px-3 py-2.5 border border-slate-300 rounded focus:ring-1 focus:ring-slate-900 focus:outline-none"
+              />
+            </div>
+
+            {/* Notes */}
+            <div className="md:col-span-2">
+              <label className="block font-bold text-slate-700 mb-1">
+                ملاحظات إضافية
+              </label>
+              <textarea
+                rows={3}
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className="w-full p-3 border border-slate-300 rounded focus:ring-1 focus:ring-slate-900 focus:outline-none"
               />
             </div>
           </div>
 
-          <div>
-            <label className="block font-bold text-slate-700 mb-1.5">
-              ملاحظات وتوصيات
-            </label>
-            <textarea
-              rows={4}
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none"
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-200">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <Link
               href={`/clients/${client.id}`}
-              className="px-5 py-2.5 border border-slate-300 text-slate-700 rounded font-semibold hover:bg-slate-50 transition-colors"
+              className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded"
             >
-              إلغاء ورجوع
+              إلغاء
             </Link>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded font-bold flex items-center gap-2 shadow-xs transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded shadow-xs transition-colors disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
               <span>{isSubmitting ? "جاري الحفظ..." : "حفظ التعديلات"}</span>
@@ -164,4 +177,3 @@ export function ClientEditForm({ client }: { client: any }) {
     </div>
   );
 }
-

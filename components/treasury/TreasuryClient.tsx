@@ -15,10 +15,10 @@ import {
   Smartphone,
   CreditCard,
   Search,
+  CheckCircle2,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { addTreasuryTransaction, transferBetweenTreasuries } from "@/actions/treasury";
-import { useRouter } from "next/navigation";
+import { useApp } from "@/lib/store";
 
 interface TreasuryItem {
   id: string;
@@ -27,20 +27,27 @@ interface TreasuryItem {
   balance: number;
   accountNumber?: string | null;
   description?: string | null;
-  _count: {
+  _count?: {
     transactions: number;
     payments: number;
   };
 }
 
 interface TreasuryClientProps {
-  treasuries: TreasuryItem[];
+  treasuries?: TreasuryItem[];
   userRole?: string;
 }
 
-export function TreasuryClient({ treasuries, userRole }: TreasuryClientProps) {
-  const router = useRouter();
-  const [selectedTreasury, setSelectedTreasury] = useState<string>("ALL");
+export function TreasuryClient({ userRole }: TreasuryClientProps) {
+  const {
+    treasuries,
+    treasuryTransactions,
+    addTreasuryTransaction: storeAddTransaction,
+    transferBetweenTreasuries: storeTransfer,
+    payments,
+    currentUser,
+  } = useApp();
+
   const [actionType, setActionType] = useState<"DEPOSIT" | "WITHDRAW" | "TRANSFER" | null>(null);
 
   // Form State
@@ -50,48 +57,87 @@ export function TreasuryClient({ treasuries, userRole }: TreasuryClientProps) {
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Ledger Filter
+  const [ledgerSearch, setLedgerSearch] = useState("");
+  const [ledgerTypeFilter, setLedgerTypeFilter] = useState("ALL");
 
   const totalBalance = treasuries.reduce((sum, t) => sum + t.balance, 0);
 
   const handleTransactionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessMsg(null);
+
+    if (amount <= 0) {
+      setError("المبلغ يجب أن يكون أكبر من الصفر");
+      return;
+    }
+
+    if (!description.trim()) {
+      setError("يرجى كتابة سبب وبيان الحركة المالية");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       if (actionType === "TRANSFER") {
-        const res = await transferBetweenTreasuries({
-          fromTreasuryId: targetTreasuryId,
-          toTreasuryId,
-          amount,
-          notes: description,
-        });
+        if (targetTreasuryId === toTreasuryId) {
+          setError("لا يمكن التحويل لنفس الخزينة");
+          setIsSubmitting(false);
+          return;
+        }
+
+        const res = storeTransfer(targetTreasuryId, toTreasuryId, amount, description);
         if (res.success) {
+          setSuccessMsg("تم التحويل المالي بين الخزائن بنجاح وتحديث الأرصدة.");
           setActionType(null);
-          router.refresh();
+          setDescription("");
         } else {
-          setError(res.error || "فشل التحويل");
+          setError(res.error || "فشل التحويل لعدم كفاية الرصيد");
         }
       } else if (actionType === "DEPOSIT" || actionType === "WITHDRAW") {
-        const res = await addTreasuryTransaction({
-          treasuryId: targetTreasuryId,
-          type: actionType,
+        storeAddTransaction(
+          targetTreasuryId,
+          actionType === "DEPOSIT" ? "DEPOSIT" : "WITHDRAWAL",
           amount,
-          description,
-        });
-        if (res.success) {
-          setActionType(null);
-          router.refresh();
-        } else {
-          setError(res.error || "فشلت العملية");
-        }
+          description
+        );
+        setSuccessMsg(
+          actionType === "DEPOSIT"
+            ? "تم الإيداع المالي في الخزينة بنجاح."
+            : "تم تسجيل السحب والمصروفات بنجاح وخصم المبلغ من الرصيد."
+        );
+        setActionType(null);
+        setDescription("");
       }
     } catch {
       setError("حدث خطأ أثناء تنفيذ الحركة المالية");
     } finally {
       setIsSubmitting(false);
+      setTimeout(() => setSuccessMsg(null), 4000);
     }
   };
+
+  // Filter transactions
+  const filteredTransactions = treasuryTransactions.filter((tx) => {
+    const q = ledgerSearch.trim().toLowerCase();
+    const treasury = treasuries.find((t) => t.id === tx.treasuryId);
+    const matchesSearch =
+      !q ||
+      tx.description.toLowerCase().includes(q) ||
+      (treasury?.name && treasury.name.toLowerCase().includes(q)) ||
+      (tx.recordedBy && tx.recordedBy.toLowerCase().includes(q));
+
+    const matchesType =
+      ledgerTypeFilter === "ALL" ||
+      (ledgerTypeFilter === "DEPOSIT" && tx.type === "DEPOSIT") ||
+      (ledgerTypeFilter === "WITHDRAWAL" && tx.type === "WITHDRAWAL");
+
+    return matchesSearch && matchesType;
+  });
 
   return (
     <div className="space-y-6">
@@ -118,6 +164,13 @@ export function TreasuryClient({ treasuries, userRole }: TreasuryClientProps) {
         </div>
       </div>
 
+      {successMsg && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg flex items-center gap-2 text-xs font-bold">
+          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
       {/* 3 Safes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {treasuries.map((treasury) => {
@@ -136,6 +189,9 @@ export function TreasuryClient({ treasuries, userRole }: TreasuryClientProps) {
           }
 
           const IconComponent = icon;
+          const treasuryPaymentsCount = payments.filter(
+            (p) => p.treasuryId === treasury.id || p.paymentMethod === treasury.paymentMethod
+          ).length;
 
           return (
             <div
@@ -160,6 +216,11 @@ export function TreasuryClient({ treasuries, userRole }: TreasuryClientProps) {
                     {treasury.accountNumber}
                   </p>
                 )}
+                {treasury.description && (
+                  <p className="text-[11px] text-slate-400 mt-1 line-clamp-1">
+                    {treasury.description}
+                  </p>
+                )}
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-baseline justify-between">
@@ -170,7 +231,7 @@ export function TreasuryClient({ treasuries, userRole }: TreasuryClientProps) {
                   </span>
                 </div>
                 <span className="text-xs font-mono text-slate-500">
-                  {treasury._count.payments} إيصال
+                  {treasuryPaymentsCount} إيصال
                 </span>
               </div>
             </div>
@@ -179,46 +240,55 @@ export function TreasuryClient({ treasuries, userRole }: TreasuryClientProps) {
       </div>
 
       {/* Quick Action Buttons for Safe Management */}
-      <div className="flex flex-wrap items-center gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
-        <span className="text-xs font-bold text-slate-700">العمليات على الخزائن:</span>
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-slate-700">العمليات على الخزائن:</span>
 
-        <button
-          onClick={() => {
-            setError(null);
-            setActionType("DEPOSIT");
-          }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>إيداع مالي مباشر</span>
-        </button>
+          <button
+            onClick={() => {
+              setError(null);
+              setActionType("DEPOSIT");
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>إيداع مالي مباشر</span>
+          </button>
 
-        <button
-          onClick={() => {
-            setError(null);
-            setActionType("WITHDRAW");
-          }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white text-xs font-semibold rounded transition-colors"
-        >
-          <Minus className="w-3.5 h-3.5" />
-          <span>سحب / مصروفات مكتبية</span>
-        </button>
+          <button
+            onClick={() => {
+              setError(null);
+              setActionType("WITHDRAW");
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white text-xs font-semibold rounded transition-colors"
+          >
+            <Minus className="w-3.5 h-3.5" />
+            <span>سحب / مصروفات مكتبية</span>
+          </button>
 
-        <button
-          onClick={() => {
-            setError(null);
-            setActionType("TRANSFER");
-          }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded transition-colors"
+          <button
+            onClick={() => {
+              setError(null);
+              setActionType("TRANSFER");
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded transition-colors"
+          >
+            <ArrowRightLeft className="w-3.5 h-3.5" />
+            <span>تحويل بين الخزائن</span>
+          </button>
+        </div>
+
+        <Link
+          href="/payments/new"
+          className="text-xs text-navy-800 hover:underline font-bold"
         >
-          <ArrowRightLeft className="w-3.5 h-3.5" />
-          <span>تحويل بين الخزائن</span>
-        </button>
+          + تحرير إيصال سداد جديد
+        </Link>
       </div>
 
       {/* Action Form (Full width container when opened) */}
       {actionType && (
-        <div className="bg-slate-50 border border-slate-300 rounded-lg p-6 space-y-4 text-xs">
+        <div className="bg-slate-50 border border-slate-300 rounded-lg p-6 space-y-4 text-xs shadow-xs animate-in fade-in duration-200">
           <div className="flex items-center justify-between border-b border-slate-200 pb-3">
             <h3 className="text-sm font-bold text-slate-900">
               {actionType === "DEPOSIT" && "تسجيل إيداع نقدي أو بنكي في الخزينة"}
@@ -252,7 +322,7 @@ export function TreasuryClient({ treasuries, userRole }: TreasuryClientProps) {
                 >
                   {treasuries.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name} (رصيدها: {t.balance} ج.م)
+                      {t.name} (رصيدها: {formatCurrency(t.balance)})
                     </option>
                   ))}
                 </select>
@@ -270,7 +340,7 @@ export function TreasuryClient({ treasuries, userRole }: TreasuryClientProps) {
                   >
                     {treasuries.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.name}
+                        {t.name} (رصيدها: {formatCurrency(t.balance)})
                       </option>
                     ))}
                   </select>
@@ -325,7 +395,121 @@ export function TreasuryClient({ treasuries, userRole }: TreasuryClientProps) {
           </form>
         </div>
       )}
+
+      {/* Treasury Ledger History */}
+      <div className="space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">
+              دفتر حركة الخزائن والمعاملات المالية
+            </h2>
+            <p className="text-xs text-slate-500">
+              سجل كامل لكافة الإيداعات، السحوبات، والتحويلات مع تحديث الأرصدة بعد كل حركة
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <input
+                type="text"
+                value={ledgerSearch}
+                onChange={(e) => setLedgerSearch(e.target.value)}
+                placeholder="بحث في البيان أو الخزينة..."
+                className="w-64 pl-3 pr-8 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-slate-900"
+              />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
+            </div>
+
+            <select
+              value={ledgerTypeFilter}
+              onChange={(e) => setLedgerTypeFilter(e.target.value)}
+              className="text-xs px-2.5 py-1.5 border border-slate-300 rounded bg-white"
+            >
+              <option value="ALL">جميع الحركات</option>
+              <option value="DEPOSIT">إيداعات فقط (+)</option>
+              <option value="WITHDRAWAL">سحوبات ومصروفات (-)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+          <table className="w-full text-xs text-right">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                <th className="py-3 px-4">التاريخ والوقت</th>
+                <th className="py-3 px-4">نوع الحركة</th>
+                <th className="py-3 px-4">الخزينة</th>
+                <th className="py-3 px-4">البيان والتفاصيل</th>
+                <th className="py-3 px-4">المسؤول</th>
+                <th className="py-3 px-4 text-left">المبلغ</th>
+                <th className="py-3 px-4 text-left">الرصيد بعد الحركة</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                    لا توجد حركات مسجلة تطابق البحث.
+                  </td>
+                </tr>
+              ) : (
+                filteredTransactions.map((tx) => {
+                  const treasury = treasuries.find((t) => t.id === tx.treasuryId);
+                  const isDeposit = tx.type === "DEPOSIT";
+
+                  return (
+                    <tr key={tx.id} className="hover:bg-slate-50/70">
+                      <td className="py-3 px-4 font-mono text-slate-600 whitespace-nowrap">
+                        {formatDate(tx.createdAt)}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold ${
+                            isDeposit
+                              ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                              : "bg-red-50 text-red-800 border border-red-200"
+                          }`}
+                        >
+                          {isDeposit ? (
+                            <>
+                              <ArrowDownLeft className="w-3 h-3" />
+                              <span>إيداع / توريد</span>
+                            </>
+                          ) : (
+                            <>
+                              <ArrowUpRight className="w-3 h-3" />
+                              <span>سحب / مصروف</span>
+                            </>
+                          )}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-bold text-slate-900">
+                        {treasury?.name || "خزينة"}
+                      </td>
+                      <td className="py-3 px-4 text-slate-700 max-w-sm truncate">
+                        {tx.description}
+                      </td>
+                      <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
+                        {tx.recordedBy || "المسؤول"}
+                      </td>
+                      <td
+                        className={`py-3 px-4 text-left font-mono font-bold text-sm whitespace-nowrap ${
+                          isDeposit ? "text-emerald-700" : "text-red-700"
+                        }`}
+                      >
+                        {isDeposit ? "+" : "-"} {formatCurrency(tx.amount)}
+                      </td>
+                      <td className="py-3 px-4 text-left font-mono font-bold text-slate-800 text-xs whitespace-nowrap">
+                        {formatCurrency(tx.newBalance)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
-

@@ -13,10 +13,11 @@ import {
   CheckCircle,
   Plus,
   Image as ImageIcon,
+  ExternalLink,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { deletePayment } from "@/actions/payments";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useApp } from "@/lib/store";
 
 interface PaymentItem {
   id: string;
@@ -52,30 +53,84 @@ interface PaymentItem {
 }
 
 interface PaymentsClientProps {
-  initialPayments: PaymentItem[];
+  initialPayments?: PaymentItem[];
   userRole?: string;
 }
 
 export function PaymentsClient({ initialPayments, userRole }: PaymentsClientProps) {
-  const [payments, setPayments] = useState<PaymentItem[]>(initialPayments);
+  const {
+    payments: storedPayments,
+    deletePayment: storeDeletePayment,
+    cases,
+    clients,
+    treasuries,
+    consultations,
+    currentUser,
+  } = useApp();
+
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("ALL");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
 
-  const isAdmin = userRole === "ADMIN";
+  const isAdmin = (userRole || currentUser?.role) === "ADMIN";
+
+  // Merge stored payments with related entities
+  const displayPayments = storedPayments.map((p) => {
+    const linkedCase = p.caseId ? cases.find((c) => c.id === p.caseId) : null;
+    const linkedClient = p.clientId
+      ? clients.find((c) => c.id === p.clientId)
+      : linkedCase?.clientId
+      ? clients.find((c) => c.id === linkedCase.clientId)
+      : null;
+    const linkedConsultation = p.consultationId
+      ? consultations.find((cn) => cn.id === p.consultationId)
+      : null;
+    const linkedTreasury = p.treasuryId
+      ? treasuries.find((t) => t.id === p.treasuryId)
+      : treasuries.find((t) => t.paymentMethod === p.paymentMethod);
+
+    return {
+      ...p,
+      client: linkedClient
+        ? {
+            id: linkedClient.id,
+            clientCode: linkedClient.clientCode,
+            name: linkedClient.name,
+          }
+        : null,
+      case: linkedCase
+        ? {
+            id: linkedCase.id,
+            caseNumber: linkedCase.caseNumber,
+            caseYear: linkedCase.caseYear,
+            court: linkedCase.court,
+          }
+        : null,
+      consultation: linkedConsultation
+        ? {
+            id: linkedConsultation.id,
+            personName: linkedConsultation.personName,
+            subject: linkedConsultation.subject,
+          }
+        : null,
+      treasury: linkedTreasury
+        ? {
+            id: linkedTreasury.id,
+            name: linkedTreasury.name,
+            paymentMethod: linkedTreasury.paymentMethod,
+          }
+        : null,
+    };
+  });
 
   const handleDelete = async () => {
     if (!deletingId) return;
     setIsDeleting(true);
     try {
-      const res = await deletePayment(deletingId);
-      if (res.success) {
-        setPayments((prev) => prev.filter((p) => p.id !== deletingId));
-        setDeletingId(null);
-      } else {
-        alert(res.error || "فشل حذف الإيصال");
-      }
+      storeDeletePayment(deletingId);
+      setDeletingId(null);
     } catch {
       alert("حدث خطأ أثناء الحذف");
     } finally {
@@ -83,10 +138,9 @@ export function PaymentsClient({ initialPayments, userRole }: PaymentsClientProp
     }
   };
 
-  const filtered = payments.filter((p) => {
+  const filtered = displayPayments.filter((p) => {
     const q = search.trim().toLowerCase();
-    const payer =
-      p.client?.name || p.consultation?.personName || "";
+    const payer = p.client?.name || p.consultation?.personName || "";
     const matchesSearch =
       !q ||
       p.receiptNumber.toLowerCase().includes(q) ||
@@ -128,7 +182,7 @@ export function PaymentsClient({ initialPayments, userRole }: PaymentsClientProp
             className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded shadow-xs transition-colors"
           >
             <Plus className="w-4 h-4" />
-            <span>تسجيل إيصال سداد جديد</span>
+            <span>تسجيل إيصال سداد جديد (صفحة كاملة)</span>
           </Link>
         </div>
       </div>
@@ -171,7 +225,7 @@ export function PaymentsClient({ initialPayments, userRole }: PaymentsClientProp
                 <th className="py-3 px-4">المسدد منه</th>
                 <th className="py-3 px-4">البيان / الغرض</th>
                 <th className="py-3 px-4">القضية المرتبطة</th>
-                <th className="py-3 px-4">طريقة الدفع</th>
+                <th className="py-3 px-4">طريقة الدفع والخزينة</th>
                 <th className="py-3 px-4">المحصل</th>
                 <th className="py-3 px-4 text-left">المبلغ</th>
                 <th className="py-3 px-4 text-center">الإجراءات</th>
@@ -261,15 +315,14 @@ export function PaymentsClient({ initialPayments, userRole }: PaymentsClientProp
                         )}
 
                         {item.transferProofPath && (
-                          <a
-                            href={`/api/documents/proof?path=${encodeURIComponent(item.transferProofPath)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => setViewingImage(item.transferProofPath || null)}
                             className="inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-900 font-semibold underline mt-0.5"
                           >
                             <ImageIcon className="w-3 h-3" />
-                            <span>عرض إيصال التحويل</span>
-                          </a>
+                            <span>عرض إشعار التحويل المرفق</span>
+                          </button>
                         )}
                       </div>
                     </td>
@@ -310,6 +363,49 @@ export function PaymentsClient({ initialPayments, userRole }: PaymentsClientProp
         </div>
       </div>
 
+      {/* Proof Image Viewer Modal */}
+      {viewingImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setViewingImage(null)}
+        >
+          <div
+            className="bg-white rounded-lg p-4 max-w-2xl w-full max-h-[90vh] overflow-auto space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b pb-2">
+              <h3 className="font-bold text-slate-900 text-sm">صورة إشعار / إيصال التحويل المرفق</h3>
+              <button
+                onClick={() => setViewingImage(null)}
+                className="text-slate-500 hover:text-slate-800 font-bold text-sm"
+              >
+                ✕ إغلاق
+              </button>
+            </div>
+            <div className="flex justify-center bg-slate-50 p-2 rounded border">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={viewingImage}
+                alt="إشعار التحويل"
+                className="max-h-[70vh] object-contain rounded"
+              />
+            </div>
+            <div className="text-right">
+              <a
+                href={viewingImage}
+                download="transfer-proof.png"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white rounded text-xs font-semibold"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>فتح بحجم كامل / تحميل</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Payment Confirmation */}
       <ConfirmDialog
         isOpen={!!deletingId}
@@ -323,4 +419,3 @@ export function PaymentsClient({ initialPayments, userRole }: PaymentsClientProp
     </div>
   );
 }
-

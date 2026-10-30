@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, UserPlus, Save, AlertCircle } from "lucide-react";
-import { createClient, generateClientCode } from "@/actions/clients";
+import { ArrowRight, Save, AlertCircle } from "lucide-react";
+import { useApp } from "@/lib/store";
 
 export function NewClientForm() {
   const router = useRouter();
-  const [nextCode, setNextCode] = useState("");
+  const { addClient, generateNextClientCode } = useApp();
+
   const [formData, setFormData] = useState({
     name: "",
     nationalId: "",
@@ -19,24 +20,25 @@ export function NewClientForm() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    generateClientCode().then(setNextCode);
-  }, []);
+  const nextCode = generateNextClientCode();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setIsSubmitting(true);
 
+    if (formData.name.trim().length < 2) {
+      setError("اسم الموكل يجب أن لا يقل عن حرفين");
+      return;
+    }
+    if (formData.phone.trim().length < 8) {
+      setError("رقم الهاتف يجب أن لا يقل عن 8 أرقام");
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      const res = await createClient(formData);
-      if (res.success && res.data) {
-        router.push(`/clients/${res.data.id}`);
-        router.refresh();
-      } else {
-        setError(res.error || "فشل تسجيل الموكل");
-        setIsSubmitting(false);
-      }
+      const newClient = addClient(formData);
+      router.push(`/clients/${newClient.id}`);
     } catch {
       setError("حدث خطأ أثناء حفظ بيانات الموكل");
       setIsSubmitting(false);
@@ -94,7 +96,7 @@ export function NewClientForm() {
               </p>
             </div>
             <div className="text-base font-black font-mono text-navy-950 bg-white px-3 py-1.5 rounded border border-slate-300 shadow-2xs">
-              {nextCode || "C-0001"}
+              {nextCode}
             </div>
           </div>
 
@@ -200,4 +202,3 @@ export function NewClientForm() {
     </div>
   );
 }
-

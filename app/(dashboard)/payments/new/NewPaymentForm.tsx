@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -15,11 +15,11 @@ import {
   Building,
   Smartphone,
 } from "lucide-react";
-import { createPaymentWithReceipt } from "@/actions/payments";
 import { formatCurrency } from "@/lib/utils";
+import { useApp } from "@/lib/store";
 
 interface NewPaymentFormProps {
-  cases: Array<{
+  cases?: Array<{
     id: string;
     caseNumber: string;
     caseYear: number;
@@ -29,26 +29,31 @@ interface NewPaymentFormProps {
     remainingAmount: number;
     client: { id: string; clientCode: string; name: string };
   }>;
-  clients: Array<{ id: string; clientCode: string; name: string }>;
-  treasuries: Array<{ id: string; name: string; paymentMethod: string; balance: number }>;
+  clients?: Array<{ id: string; clientCode: string; name: string }>;
+  treasuries?: Array<{ id: string; name: string; paymentMethod: string; balance: number }>;
   preselectedCaseId?: string;
   preselectedClientId?: string;
 }
 
 export function NewPaymentForm({
-  cases,
-  clients,
-  treasuries,
   preselectedCaseId,
   preselectedClientId,
 }: NewPaymentFormProps) {
   const router = useRouter();
+  const {
+    cases: storeCases,
+    clients: storeClients,
+    treasuries: storeTreasuries,
+    addPayment,
+  } = useApp();
 
   const [paymentType, setPaymentType] = useState<"CASE" | "CLIENT_DIRECT">(
     preselectedCaseId ? "CASE" : "CASE"
   );
-  const [caseId, setCaseId] = useState(preselectedCaseId || (cases[0]?.id || ""));
-  const [clientId, setClientId] = useState(preselectedClientId || (clients[0]?.id || ""));
+
+  const availableCases = storeCases.filter((c) => !c.isClosed);
+  const [caseId, setCaseId] = useState(preselectedCaseId || availableCases[0]?.id || "");
+  const [clientId, setClientId] = useState(preselectedClientId || storeClients[0]?.id || "");
   const [amount, setAmount] = useState<number>(5000);
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "WALLET" | "INSTAPAY">("CASH");
@@ -64,8 +69,19 @@ export function NewPaymentForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Selected Case details
-  const selectedCase = cases.find((c) => c.id === caseId);
-  const selectedTreasury = treasuries.find((t) => t.paymentMethod === paymentMethod);
+  const selectedCase = storeCases.find((c) => c.id === caseId);
+  const selectedTreasury =
+    storeTreasuries.find((t) => t.paymentMethod === paymentMethod) ||
+    storeTreasuries[0];
+
+  useEffect(() => {
+    if (!caseId && availableCases.length > 0) {
+      setCaseId(availableCases[0].id);
+    }
+    if (!clientId && storeClients.length > 0) {
+      setClientId(storeClients[0].id);
+    }
+  }, [availableCases, storeClients, caseId, clientId]);
 
   const handleFileChange = (file: File | null) => {
     if (!file) return;
@@ -105,35 +121,34 @@ export function NewPaymentForm({
     setIsSubmitting(true);
 
     try {
-      const formData = new FormData();
-      formData.append("amount", amount.toString());
-      formData.append("paymentDate", paymentDate);
-      formData.append("paymentMethod", paymentMethod);
-      formData.append("purpose", purpose);
-      if (notes) formData.append("notes", notes);
-      if (paymentType === "CASE" && caseId) {
-        formData.append("caseId", caseId);
-        if (selectedCase) formData.append("clientId", selectedCase.client.id);
-      } else if (clientId) {
-        formData.append("clientId", clientId);
-      }
+      const finishSave = (proofDataUrl?: string) => {
+        addPayment({
+          amount,
+          paymentDate,
+          paymentMethod,
+          purpose,
+          notes,
+          caseId: paymentType === "CASE" ? caseId : undefined,
+          clientId: paymentType === "CASE" ? selectedCase?.clientId : clientId,
+          treasuryId: selectedTreasury?.id,
+          transferProofPath: proofDataUrl,
+        });
 
-      if (selectedFile) {
-        formData.append("transferImage", selectedFile);
-      }
-
-      const res = await createPaymentWithReceipt(formData);
-
-      if (res.success && res.data) {
-        if (caseId) {
+        if (paymentType === "CASE" && caseId) {
           router.push(`/cases/${caseId}`);
         } else {
           router.push("/payments");
         }
-        router.refresh();
+      };
+
+      if (selectedFile) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          finishSave(reader.result as string);
+        };
+        reader.readAsDataURL(selectedFile);
       } else {
-        setError(res.error || "فشل تسجيل الإيصال");
-        setIsSubmitting(false);
+        finishSave(undefined);
       }
     } catch {
       setError("حدث خطأ أثناء حفظ الإيصال");
@@ -216,11 +231,14 @@ export function NewPaymentForm({
                     onChange={(e) => setCaseId(e.target.value)}
                     className="w-full px-3.5 py-2.5 border border-slate-300 rounded bg-white font-semibold text-slate-900"
                   >
-                    {cases.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        القضية {c.caseNumber}/{c.caseYear} - الموكل: {c.client.name} (المتبقي: {c.remainingAmount} ج.م)
-                      </option>
-                    ))}
+                    {availableCases.map((c) => {
+                      const client = storeClients.find((cl) => cl.id === c.clientId);
+                      return (
+                        <option key={c.id} value={c.id}>
+                          القضية {c.caseNumber}/{c.caseYear} - الموكل: {client?.name || "موكل"} (المتبقي: {c.remainingAmount} ج.م)
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -257,7 +275,7 @@ export function NewPaymentForm({
                   onChange={(e) => setClientId(e.target.value)}
                   className="w-full px-3.5 py-2.5 border border-slate-300 rounded bg-white font-semibold text-slate-900"
                 >
-                  {clients.map((c) => (
+                  {storeClients.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name} ({c.clientCode})
                     </option>
@@ -453,4 +471,3 @@ export function NewPaymentForm({
     </div>
   );
 }
-

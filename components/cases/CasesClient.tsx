@@ -2,121 +2,50 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  Plus,
-  Search,
-  Eye,
-  Edit,
-  Trash2,
-  Calendar,
-} from "lucide-react";
+import { Plus, Search, Eye, Edit, Trash2, Calendar, Briefcase } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { softDeleteCase } from "@/actions/cases";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { useRouter } from "next/navigation";
+import { useApp } from "@/lib/store";
 
-interface CaseItem {
-  id: string;
-  caseNumber: string;
-  caseYear: number;
-  court: string;
-  circuit?: string | null;
-  totalFees: number;
-  paidAmount: number;
-  remainingAmount: number;
-  nextHearingDate?: Date | string | null;
-  client: {
-    id: string;
-    clientCode: string;
-    name: string;
-    phone: string;
-  };
-  lawyer?: {
-    id: string;
-    name: string;
-  } | null;
-  category: {
-    id: string;
-    code: string;
-    name: string;
-  };
-  status: {
-    id: string;
-    name: string;
-    isClosed: boolean;
-  };
-  _count?: {
-    hearings: number;
-    payments: number;
-    documents: number;
-  };
-}
-
-interface CasesClientProps {
-  initialCases: CaseItem[];
-  clientsList: Array<{ id: string; clientCode: string; name: string; phone: string }>;
-  categoriesList: Array<{ id: string; code: string; name: string }>;
-  statusesList: Array<{ id: string; name: string; isClosed: boolean }>;
-  lawyersList: Array<{ id: string; name: string }>;
-  userRole?: string;
-}
-
-export function CasesClient({
-  initialCases,
-  categoriesList,
-  statusesList,
-  userRole,
-}: CasesClientProps) {
-  const router = useRouter();
-  const [cases, setCases] = useState<CaseItem[]>(initialCases);
+export function CasesClient() {
+  const { cases, clients, categories, statuses, staff, deleteCase, currentUser } = useApp();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [isClosedFilter, setIsClosedFilter] = useState("ACTIVE"); // ACTIVE, CLOSED, ALL
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const isAdmin = userRole === "ADMIN";
+  const isAdmin = currentUser?.role === "ADMIN";
 
-  const handleDelete = async () => {
-    if (!deletingId) return;
-    setIsDeleting(true);
-    try {
-      const res = await softDeleteCase(deletingId);
-      if (res.success) {
-        setCases((prev) => prev.filter((c) => c.id !== deletingId));
-        setDeletingId(null);
-        router.refresh();
-      } else {
-        alert(res.error || "فشل أرشفة القضية");
-      }
-    } catch {
-      alert("حدث خطأ أثناء العملية");
-    } finally {
-      setIsDeleting(false);
-    }
-  };
+  const activeCases = cases.filter((c) => !c.isDeleted);
 
-  const filtered = cases.filter((c) => {
+  const filteredCases = activeCases.filter((c) => {
     const q = search.trim().toLowerCase();
+    const client = clients.find((cl) => cl.id === c.clientId);
+    const clientName = client?.name || "";
+    const clientCode = client?.clientCode || "";
+
     const matchesSearch =
       !q ||
-      c.caseNumber.toLowerCase().includes(q) ||
-      c.court.toLowerCase().includes(q) ||
-      c.client.name.toLowerCase().includes(q) ||
-      c.client.clientCode.toLowerCase().includes(q);
+      c.caseNumber.includes(q) ||
+      c.caseYear.toString().includes(q) ||
+      clientName.toLowerCase().includes(q) ||
+      clientCode.toLowerCase().includes(q) ||
+      c.court.toLowerCase().includes(q);
 
-    const matchesCategory =
-      categoryFilter === "ALL" || c.category.id === categoryFilter;
+    const matchesCategory = categoryFilter === "ALL" || c.categoryId === categoryFilter;
+    const matchesStatus = statusFilter === "ALL" || c.statusId === statusFilter;
 
-    const matchesStatus = statusFilter === "ALL" || c.status.id === statusFilter;
-
-    const matchesClosed =
-      isClosedFilter === "ALL" ||
-      (isClosedFilter === "ACTIVE" ? !c.status.isClosed : c.status.isClosed);
-
-    return matchesSearch && matchesCategory && matchesStatus && matchesClosed;
+    return matchesSearch && matchesCategory && matchesStatus;
   });
+
+  const handleDelete = () => {
+    if (!deletingId) return;
+    setIsDeleting(true);
+    deleteCase(deletingId);
+    setDeletingId(null);
+    setIsDeleting(false);
+  };
 
   return (
     <div className="space-y-5">
@@ -124,70 +53,61 @@ export function CasesClient({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            سجل القضايا والدعاوى
+            ملفات القضايا وسجل الجلسات
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            متابعة الجلسات، مراحل التقاضي، الأتعاب المستحقة والأوراق المرفوعة
+            إدارة الدعاوى المنظورة والمحكومة بالدوائر، الجلسات، الأحكام والأتعاب
           </p>
         </div>
 
-        {/* Link to Full Page Form (Not a Modal) */}
         <Link
           href="/cases/new"
           prefetch={true}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded shadow-xs transition-colors self-start sm:self-auto"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded shadow-xs transition-colors self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>افتتاح ملف قضية جديد (صفحة كاملة)</span>
+          <span>قيد قضية جديدة</span>
         </Link>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs flex flex-col lg:flex-row gap-3 items-center justify-between text-xs">
-        <div className="relative w-full lg:w-72">
+      <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between text-xs">
+        <div className="relative w-full md:w-80">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="بحث برقم القضية، المحكمة، أو اسم الموكل..."
+            placeholder="بحث برقم القضية، السنة، اسم الموكل، أو المحكمة..."
             className="w-full pl-3 pr-9 py-2 border border-slate-300 rounded focus:ring-1 focus:ring-slate-900 focus:outline-none"
           />
           <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-          <select
-            value={isClosedFilter}
-            onChange={(e) => setIsClosedFilter(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded bg-white font-medium"
-          >
-            <option value="ACTIVE">القضايا المتداولة (النشطة)</option>
-            <option value="CLOSED">القضايا المنتهية والمغلقة</option>
-            <option value="ALL">جميع القضايا (الكل)</option>
-          </select>
-
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          {/* Category Filter */}
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded bg-white text-slate-700"
+            className="px-3 py-2 border border-slate-300 rounded bg-white text-slate-700 font-medium"
           >
             <option value="ALL">جميع التصنيفات</option>
-            {categoriesList.map((cat) => (
+            {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>
-                [{cat.code}] {cat.name}
+                {cat.code} - {cat.name}
               </option>
             ))}
           </select>
 
+          {/* Status Filter */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded bg-white text-slate-700"
+            className="px-3 py-2 border border-slate-300 rounded bg-white text-slate-700 font-medium"
           >
-            <option value="ALL">جميع الحالات القضائية</option>
-            {statusesList.map((st) => (
+            <option value="ALL">جميع المراحل والحالات</option>
+            {statuses.map((st) => (
               <option key={st.id} value={st.id}>
-                {st.name}
+                {st.name} {st.isClosed ? "(مغلقة)" : "(متداولة)"}
               </option>
             ))}
           </select>
@@ -200,133 +120,156 @@ export function CasesClient({
           <table className="w-full text-xs text-right">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-                <th className="py-3 px-4">رقم القضية</th>
+                <th className="py-3 px-4">رقم القضية / السنة</th>
                 <th className="py-3 px-4">الموكل</th>
+                <th className="py-3 px-4">المحكمة والفرع</th>
                 <th className="py-3 px-4">التصنيف</th>
-                <th className="py-3 px-4">المحكمة / الدائرة</th>
+                <th className="py-3 px-4">المرحلة / الحالة</th>
                 <th className="py-3 px-4">المحامي المسؤول</th>
-                <th className="py-3 px-4">الحالة</th>
-                <th className="py-3 px-4">المتبقي</th>
                 <th className="py-3 px-4">الجلسة القادمة</th>
+                <th className="py-3 px-4">المتبقي من الأتعاب</th>
                 <th className="py-3 px-4 text-center">الإجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.length === 0 ? (
+              {filteredCases.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-8 text-center text-slate-400">
-                    لا توجد قضايا مطابقة للشروط المحددة.
+                    لا توجد قضايا مسجلة مطابقة لمعايير البحث.
                   </td>
                 </tr>
               ) : (
-                filtered.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-bold text-navy-950">
-                      <Link
-                        href={`/cases/${item.id}`}
-                        prefetch={true}
-                        className="hover:underline text-navy-900"
-                      >
-                        {item.caseNumber} / {item.caseYear}
-                      </Link>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <Link
-                        href={`/clients/${item.client.id}`}
-                        prefetch={true}
-                        className="font-bold text-slate-900 hover:text-navy-800 hover:underline block"
-                      >
-                        {item.client.name}
-                      </Link>
-                      <span className="text-[11px] font-mono text-slate-400">
-                        {item.client.clientCode}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className="font-semibold text-slate-800">
-                        [{item.category.code}] {item.category.name}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-700">
-                      <div>{item.court}</div>
-                      {item.circuit && (
-                        <div className="text-[11px] text-slate-400">{item.circuit}</div>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-700">
-                      {item.lawyer?.name || "-"}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
-                          item.status.isClosed
-                            ? "bg-slate-100 text-slate-600"
-                            : "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                        }`}
-                      >
-                        {item.status.name}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-mono font-bold text-red-700">
-                      {formatCurrency(item.remainingAmount)}
-                    </td>
-                    <td className="py-3.5 px-4 font-mono text-slate-700 whitespace-nowrap">
-                      {item.nextHearingDate ? (
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5 text-amber-600" />
-                          <span className="font-bold">
-                            {formatDate(item.nextHearingDate)}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1">
+                filteredCases.map((caseItem) => {
+                  const client = clients.find((cl) => cl.id === caseItem.clientId);
+                  const cat = categories.find((c) => c.id === caseItem.categoryId);
+                  const st = statuses.find((s) => s.id === caseItem.statusId);
+                  const lawyer = staff.find((l) => l.id === caseItem.lawyerId);
+
+                  const nextHearing = caseItem.hearings?.[0];
+
+                  return (
+                    <tr key={caseItem.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3.5 px-4 font-mono font-bold text-navy-950">
                         <Link
-                          href={`/cases/${item.id}`}
+                          href={`/cases/${caseItem.id}`}
                           prefetch={true}
-                          className="p-1.5 text-slate-600 hover:text-navy-900 hover:bg-slate-100 rounded transition-colors"
-                          title="فتح ملف القضية والجلسات"
+                          className="hover:underline text-navy-900"
                         >
-                          <Eye className="w-4 h-4" />
+                          {caseItem.caseNumber} / {caseItem.caseYear}
                         </Link>
-                        <Link
-                          href={`/cases/${item.id}/edit`}
-                          prefetch={true}
-                          className="p-1.5 text-slate-600 hover:text-navy-900 hover:bg-slate-100 rounded transition-colors"
-                          title="تعديل بيانات القضية"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Link>
-                        {isAdmin && (
-                          <button
-                            onClick={() => setDeletingId(item.id)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="أرشفة القضية"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {client ? (
+                          <div>
+                            <Link
+                              href={`/clients/${client.id}`}
+                              className="font-bold text-slate-900 hover:underline"
+                            >
+                              {client.name}
+                            </Link>
+                            <span className="text-[10px] text-slate-400 block font-mono">
+                              {client.clientCode}
+                            </span>
+                          </div>
+                        ) : (
+                          "-"
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-700">
+                        <div>
+                          <span className="font-semibold">{caseItem.court}</span>
+                          {caseItem.circuit && (
+                            <span className="text-[10px] text-slate-500 block">
+                              {caseItem.circuit}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+                          {cat?.code ? `[${cat.code}] ` : ""}
+                          {cat?.name || "غير مصنف"}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
+                            st?.isClosed
+                              ? "bg-slate-100 text-slate-700 border border-slate-200"
+                              : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                          }`}
+                        >
+                          {st?.name || "متداولة"}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-700">
+                        {lawyer?.name || "المستشار المناوب"}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-slate-700 whitespace-nowrap">
+                        {nextHearing ? (
+                          <span className="flex items-center gap-1 font-semibold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                            <Calendar className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                            <span>{formatDate(nextHearing.hearingDate)}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">لا توجد جلسة محددة</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-xs whitespace-nowrap">
+                        {caseItem.remainingAmount > 0 ? (
+                          <span className="text-red-700">
+                            {formatCurrency(caseItem.remainingAmount)}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-700">خالص الأتعاب</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Link
+                            href={`/cases/${caseItem.id}`}
+                            prefetch={true}
+                            className="p-1.5 text-slate-600 hover:text-navy-900 hover:bg-slate-100 rounded transition-colors"
+                            title="عرض تفاصيل القضية"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Link>
+                          <Link
+                            href={`/cases/${caseItem.id}/edit`}
+                            prefetch={true}
+                            className="p-1.5 text-slate-600 hover:text-navy-900 hover:bg-slate-100 rounded transition-colors"
+                            title="تعديل بيانات القضية"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Link>
+                          {isAdmin && (
+                            <button
+                              onClick={() => setDeletingId(caseItem.id)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="حذف القضية"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Delete Confirmation */}
+      {/* Delete Case Confirmation */}
       <ConfirmDialog
         isOpen={!!deletingId}
         onClose={() => setDeletingId(null)}
         onConfirm={handleDelete}
-        title="أرشفة القضية"
-        message="هل أنت متأكد من أرشفة هذه القضية؟ سيتم إخفاؤها من القائمة النشطة مع الحفاظ الكامل على كافة الجلسات والإيصالات والمستندات المرتبطة بها."
-        confirmText="تأكيد الأرشفة"
+        title="تأكيد حذف وأرشفة ملف القضية"
+        message="هل أنت متأكد من حذف هذه القضية؟ سيتم الاحتفاظ بالسجل المالي والجلسات كأرشيف مع استبعادها من القضايا النشطة."
+        confirmText="تأكيد الحذف"
         isLoading={isDeleting}
       />
     </div>

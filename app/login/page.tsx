@@ -2,34 +2,47 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { loginAction } from "@/actions/auth";
-import { Scale, Lock, User, AlertCircle, ArrowLeft } from "lucide-react";
+import { useApp } from "@/lib/store";
+import { Scale, Lock, User, AlertCircle, ArrowLeft, CheckCircle2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login } = useApp();
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin123");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
     try {
-      const result = await loginAction({ username, password });
-      if (result.success) {
+      const success = login(username, password);
+      if (success) {
         router.push("/");
-        router.refresh();
       } else {
-        setError(result.error || "اسم المستخدم أو كلمة المرور غير صحيحة");
+        setError("اسم المستخدم أو كلمة المرور غير صحيحة");
       }
     } catch {
-      setError("حدث خطأ أثناء الاتصال بالخادم، يرجى المحاولة لاحقاً");
+      setError("حدث خطأ أثناء تسجيل الدخول");
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleQuickLogin = (role: "admin" | "employee") => {
+    if (role === "admin") {
+      setUsername("admin");
+      setPassword("admin123");
+      login("admin", "admin123");
+    } else {
+      setUsername("employee");
+      setPassword("emp123");
+      login("employee", "emp123");
+    }
+    router.push("/");
   };
 
   return (
@@ -45,7 +58,7 @@ export default function LoginPage() {
             نظام إدارة مكتب المحاماة
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            تسجيل الدخول للمستشارين وفريق العمل
+            تسجيل الدخول للمستشارين وفريق العمل (نسخة التجربة Vercel Demo)
           </p>
         </div>
 
@@ -57,10 +70,36 @@ export default function LoginPage() {
           </div>
         )}
 
+        {/* Quick Demo Login Buttons */}
+        <div className="mb-6 p-3 bg-navy-50/50 border border-navy-100 rounded-lg space-y-2">
+          <span className="text-[11px] font-bold text-navy-900 block text-center">
+            تجربة فورية بدون كتابة (نقرة واحدة):
+          </span>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleQuickLogin("admin")}
+              className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-white rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>دخول كمدير نظام</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin("employee")}
+              className="py-1.5 px-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-slate-500" />
+              <span>دخول كموظف</span>
+            </button>
+          </div>
+        </div>
+
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Username */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
               اسم المستخدم
             </label>
             <div className="relative">
@@ -69,15 +108,16 @@ export default function LoginPage() {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="أدخل اسم المستخدم"
-                className="w-full pl-3 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900"
+                className="w-full pl-3 pr-9 py-2 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                placeholder="admin أو employee"
               />
-              <User className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
+              <User className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
             </div>
           </div>
 
+          {/* Password */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
               كلمة المرور
             </label>
             <div className="relative">
@@ -86,65 +126,24 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-3 pr-9 py-2 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none"
                 placeholder="••••••••"
-                className="w-full pl-3 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900"
               />
-              <Lock className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
+              <Lock className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
             </div>
           </div>
 
+          {/* Submit Button */}
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full mt-2 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded shadow-xs flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+            className="w-full mt-2 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow-xs disabled:opacity-50"
           >
-            {isLoading ? (
-              <span>جاري التحقق من البيانات...</span>
-            ) : (
-              <>
-                <span>دخول النظام</span>
-                <ArrowLeft className="w-4 h-4" />
-              </>
-            )}
+            <span>{isLoading ? "جاري الدخول..." : "تسجيل الدخول للنظام"}</span>
+            <ArrowLeft className="w-4 h-4" />
           </button>
         </form>
-
-        {/* Demo Credentials Box */}
-        <div className="mt-8 pt-6 border-t border-slate-200">
-          <p className="text-[11px] font-bold text-slate-600 mb-2">
-            حسابات تجريبية مهيأة مسبقاً:
-          </p>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <button
-              type="button"
-              onClick={() => {
-                setUsername("admin");
-                setPassword("admin123");
-              }}
-              className="p-2 text-right bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 text-slate-700"
-            >
-              <span className="font-bold block text-slate-900">مدير النظام (Admin)</span>
-              <span>admin / admin123</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setUsername("employee");
-                setPassword("emp123");
-              }}
-              className="p-2 text-right bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 text-slate-700"
-            >
-              <span className="font-bold block text-slate-900">موظف سكرتارية</span>
-              <span>employee / emp123</span>
-            </button>
-          </div>
-        </div>
       </div>
-
-      <p className="text-xs text-slate-400 mt-6">
-        نظام آمن • متوافق مع بيئة الويب وتطبيق سطح المكتب (Electron)
-      </p>
     </div>
   );
 }
-

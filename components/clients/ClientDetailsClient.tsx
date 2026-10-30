@@ -18,31 +18,38 @@ import {
 } from "lucide-react";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { DocumentList } from "@/components/documents/DocumentList";
-import { useRouter } from "next/navigation";
+import { useApp } from "@/lib/store";
 
 interface ClientDetailsProps {
-  client: any;
-  categories: Array<{ id: string; code: string; name: string }>;
-  statuses: Array<{ id: string; name: string; isClosed: boolean }>;
-  lawyers: Array<{ id: string; name: string }>;
-  userRole?: string;
+  clientId: string;
 }
 
-export function ClientDetailsClient({
-  client,
-  categories,
-  statuses,
-  lawyers,
-  userRole,
-}: ClientDetailsProps) {
-  const router = useRouter();
+export function ClientDetailsClient({ clientId }: ClientDetailsProps) {
+  const { clients, cases, consultations, payments, categories, statuses, staff, currentUser, deleteClientDocument } =
+    useApp();
   const [activeTab, setActiveTab] = useState<"cases" | "consultations" | "payments" | "documents">(
     "cases"
   );
 
-  const totalAgreed = client.cases.reduce((sum: number, c: any) => sum + c.totalFees, 0);
-  const totalPaid = client.cases.reduce((sum: number, c: any) => sum + c.paidAmount, 0);
-  const totalRemaining = client.cases.reduce((sum: number, c: any) => sum + c.remainingAmount, 0);
+  const client = clients.find((c) => c.id === clientId) || clients[0];
+
+  if (!client) {
+    return (
+      <div className="p-8 text-center text-slate-500 text-xs">
+        ملف الموكل غير موجود أو تم حذفه.
+      </div>
+    );
+  }
+
+  const clientCases = cases.filter((c) => c.clientId === client.id && !c.isDeleted);
+  const clientConsultations = consultations.filter((con) => con.clientId === client.id);
+  const clientPayments = payments.filter((p) => p.clientId === client.id);
+
+  const totalAgreed = clientCases.reduce((sum, c) => sum + c.totalFees, 0);
+  const totalPaid = clientCases.reduce((sum, c) => sum + c.paidAmount, 0);
+  const totalRemaining = clientCases.reduce((sum, c) => sum + c.remainingAmount, 0);
+
+  const isAdmin = currentUser?.role === "ADMIN";
 
   return (
     <div className="space-y-6">
@@ -91,7 +98,7 @@ export function ClientDetailsClient({
             <span>طباعة ملف الموكل</span>
           </Link>
 
-          {/* Add Case inside Client Page -> Full Page with preselected client */}
+          {/* Add Case inside Client Page */}
           <Link
             href={`/cases/new?clientId=${client.id}`}
             prefetch={true}
@@ -137,7 +144,7 @@ export function ClientDetailsClient({
         )}
       </div>
 
-      {/* Financial Status Summary for this client's cases */}
+      {/* Financial Status Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs text-center">
           <p className="text-xs font-semibold text-slate-500 mb-1">إجمالي الأتعاب المتفق عليها</p>
@@ -170,7 +177,7 @@ export function ClientDetailsClient({
           }`}
         >
           <Briefcase className="w-4 h-4" />
-          <span>القضايا المسجلة ({client.cases?.length || 0})</span>
+          <span>القضايا المسجلة ({clientCases.length})</span>
         </button>
 
         <button
@@ -182,7 +189,7 @@ export function ClientDetailsClient({
           }`}
         >
           <MessageSquare className="w-4 h-4" />
-          <span>الاستشارات السابقة ({client.consultations?.length || 0})</span>
+          <span>الاستشارات السابقة ({clientConsultations.length})</span>
         </button>
 
         <button
@@ -194,7 +201,7 @@ export function ClientDetailsClient({
           }`}
         >
           <Receipt className="w-4 h-4" />
-          <span>سجل المدفوعات والإيصالات ({client.payments?.length || 0})</span>
+          <span>إيصالات وسندات السداد ({clientPayments.length})</span>
         </button>
 
         <button
@@ -210,7 +217,7 @@ export function ClientDetailsClient({
         </button>
       </div>
 
-      {/* Tab 1: Cases Table */}
+      {/* Tab 1: Cases */}
       {activeTab === "cases" && (
         <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
@@ -218,79 +225,68 @@ export function ClientDetailsClient({
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                   <th className="py-3 px-4">رقم القضية</th>
-                  <th className="py-3 px-4">المحكمة / الدائرة</th>
+                  <th className="py-3 px-4">المحكمة والفرع</th>
                   <th className="py-3 px-4">التصنيف</th>
-                  <th className="py-3 px-4">المحامي المسؤول</th>
                   <th className="py-3 px-4">الحالة</th>
-                  <th className="py-3 px-4">الأتعاب</th>
-                  <th className="py-3 px-4">المسدد</th>
+                  <th className="py-3 px-4">المحامي المسؤول</th>
                   <th className="py-3 px-4">المتبقي</th>
-                  <th className="py-3 px-4">الجلسة القادمة</th>
-                  <th className="py-3 px-4 text-center">عرض</th>
+                  <th className="py-3 px-4 text-center">الإجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {client.cases.length === 0 ? (
+                {clientCases.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-8 text-center text-slate-400">
-                      لا توجد قضايا مسجلة لهذا الموكل حالياً.
+                    <td colSpan={7} className="py-8 text-center text-slate-400">
+                      لا توجد قضايا مسجلة لهذا الموكل حتى الآن.
                     </td>
                   </tr>
                 ) : (
-                  client.cases.map((c: any) => (
-                    <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3.5 px-4 font-bold font-mono text-navy-950">
-                        <Link
-                          href={`/cases/${c.id}`}
-                          prefetch={true}
-                          className="hover:underline text-navy-900"
-                        >
-                          {c.caseNumber} / {c.caseYear}
-                        </Link>
-                      </td>
-                      <td className="py-3.5 px-4 text-slate-700">
-                        {c.court} {c.circuit ? `- ${c.circuit}` : ""}
-                      </td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-800">
-                        {c.category?.name}
-                      </td>
-                      <td className="py-3.5 px-4 text-slate-700">
-                        {c.lawyer?.name || "-"}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                            c.status.isClosed
-                              ? "bg-slate-100 text-slate-600"
-                              : "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                          }`}
-                        >
-                          {c.status.name}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 font-mono font-medium text-slate-900">
-                        {formatCurrency(c.totalFees)}
-                      </td>
-                      <td className="py-3.5 px-4 font-mono font-medium text-emerald-700">
-                        {formatCurrency(c.paidAmount)}
-                      </td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-red-700">
-                        {formatCurrency(c.remainingAmount)}
-                      </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-700">
-                        {c.nextHearingDate ? formatDate(c.nextHearingDate) : "غير محددة"}
-                      </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <Link
-                          href={`/cases/${c.id}`}
-                          prefetch={true}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded text-[11px]"
-                        >
-                          فتح القضية
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
+                  clientCases.map((cs) => {
+                    const cat = categories.find((c) => c.id === cs.categoryId);
+                    const st = statuses.find((s) => s.id === cs.statusId);
+                    const law = staff.find((l) => l.id === cs.lawyerId);
+
+                    return (
+                      <tr key={cs.id} className="hover:bg-slate-50/70">
+                        <td className="py-3.5 px-4 font-mono font-bold text-navy-900">
+                          <Link href={`/cases/${cs.id}`} className="hover:underline">
+                            {cs.caseNumber} / {cs.caseYear}
+                          </Link>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-700">{cs.court}</td>
+                        <td className="py-3.5 px-4">
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded font-semibold text-[11px]">
+                            {cat?.name || "عام"}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+                              st?.isClosed
+                                ? "bg-slate-100 text-slate-600"
+                                : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                            }`}
+                          >
+                            {st?.name || "متداولة"}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-700">
+                          {law?.name || "المستشار المناوب"}
+                        </td>
+                        <td className="py-3.5 px-4 font-mono font-bold text-red-700 text-xs">
+                          {formatCurrency(cs.remainingAmount)}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <Link
+                            href={`/cases/${cs.id}`}
+                            className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-semibold rounded text-[11px]"
+                          >
+                            فتح القضية
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -298,45 +294,43 @@ export function ClientDetailsClient({
         </div>
       )}
 
-      {/* Tab 2: Consultations Table */}
+      {/* Tab 2: Consultations */}
       {activeTab === "consultations" && (
         <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-right">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-                  <th className="py-3 px-4">التاريخ</th>
-                  <th className="py-3 px-4">موضوع الاستشارة</th>
-                  <th className="py-3 px-4">المحامي المستشار</th>
+                  <th className="py-3 px-4">تاريخ الاستشارة</th>
+                  <th className="py-3 px-4">الموضوع</th>
+                  <th className="py-3 px-4">المحامي</th>
                   <th className="py-3 px-4">المبلغ المسدد</th>
                   <th className="py-3 px-4">طريقة الدفع</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {client.consultations.length === 0 ? (
+                {clientConsultations.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-slate-400">
-                      لا توجد استشارات مسجلة.
+                      لا توجد استشارات مسجلة لهذا الموكل.
                     </td>
                   </tr>
                 ) : (
-                  client.consultations.map((con: any) => (
-                    <tr key={con.id} className="hover:bg-slate-50">
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                  clientConsultations.map((con) => (
+                    <tr key={con.id} className="hover:bg-slate-50/70">
+                      <td className="py-3.5 px-4 font-mono text-slate-700">
                         {formatDate(con.date)}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-800 font-medium">
+                      <td className="py-3.5 px-4 font-semibold text-slate-800">
                         {con.subject}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-700">
-                        {con.lawyer?.name || "المستشار المناوب"}
+                      <td className="py-3.5 px-4 text-slate-600">
+                        {staff.find((s) => s.id === con.lawyerId)?.name || "-"}
                       </td>
                       <td className="py-3.5 px-4 font-mono font-bold text-emerald-800">
                         {formatCurrency(con.amountPaid)}
                       </td>
-                      <td className="py-3.5 px-4 font-medium text-slate-600">
-                        {con.paymentMethod}
-                      </td>
+                      <td className="py-3.5 px-4 text-slate-600">{con.paymentMethod}</td>
                     </tr>
                   ))
                 )}
@@ -346,7 +340,7 @@ export function ClientDetailsClient({
         </div>
       )}
 
-      {/* Tab 3: Payments Table */}
+      {/* Tab 3: Payments */}
       {activeTab === "payments" && (
         <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
@@ -355,42 +349,40 @@ export function ClientDetailsClient({
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                   <th className="py-3 px-4">رقم الإيصال</th>
                   <th className="py-3 px-4">تاريخ السداد</th>
-                  <th className="py-3 px-4">المبلغ</th>
-                  <th className="py-3 px-4">طريقة الدفع</th>
-                  <th className="py-3 px-4">القضية</th>
                   <th className="py-3 px-4">البيان</th>
-                  <th className="py-3 px-4 text-center">طباعة إيصال</th>
+                  <th className="py-3 px-4">طريقة الدفع</th>
+                  <th className="py-3 px-4">المحصل</th>
+                  <th className="py-3 px-4 text-left">المبلغ</th>
+                  <th className="py-3 px-4 text-center">طباعة</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {client.payments.length === 0 ? (
+                {clientPayments.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-8 text-center text-slate-400">
-                      لا توجد مدفوعات مسجلة.
+                      لا توجد مدفوعات مسجلة لهذا الموكل بعد.
                     </td>
                   </tr>
                 ) : (
-                  client.payments.map((p: any) => (
-                    <tr key={p.id} className="hover:bg-slate-50">
+                  clientPayments.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50/70">
                       <td className="py-3.5 px-4 font-mono font-bold text-navy-950">
                         {p.receiptNumber}
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-700">
+                      <td className="py-3.5 px-4 font-mono text-slate-600">
                         {formatDate(p.paymentDate)}
                       </td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-emerald-800">
+                      <td className="py-3.5 px-4 text-slate-800">{p.purpose}</td>
+                      <td className="py-3.5 px-4">{p.paymentMethod}</td>
+                      <td className="py-3.5 px-4 text-slate-600">{p.recordedByName}</td>
+                      <td className="py-3.5 px-4 text-left font-mono font-bold text-emerald-800">
                         {formatCurrency(p.amount)}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-700">{p.paymentMethod}</td>
-                      <td className="py-3.5 px-4 text-slate-700 font-mono">
-                        {p.case ? `${p.case.caseNumber}/${p.case.caseYear}` : "-"}
-                      </td>
-                      <td className="py-3.5 px-4 text-slate-600">{p.purpose || "-"}</td>
                       <td className="py-3.5 px-4 text-center">
                         <Link
                           href={`/print/receipt/${p.id}`}
                           target="_blank"
-                          className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-semibold rounded text-[11px]"
+                          className="px-2.5 py-1 bg-white border border-slate-300 hover:bg-slate-50 rounded text-slate-800 font-semibold text-[11px]"
                         >
                           طباعة
                         </Link>
@@ -427,9 +419,9 @@ export function ClientDetailsClient({
           </div>
 
           <DocumentList
-            documents={client.documents}
-            canDelete={userRole === "ADMIN"}
-            onRefresh={() => router.refresh()}
+            documents={client.documents || []}
+            canDelete={isAdmin}
+            onRefresh={() => {}}
           />
         </div>
       )}

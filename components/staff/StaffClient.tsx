@@ -13,10 +13,11 @@ import {
   Phone,
   Mail,
   Calendar,
+  AlertCircle,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { deleteStaffMember } from "@/actions/staff";
 import { formatDate } from "@/lib/utils";
+import { useApp } from "@/lib/store";
 
 interface StaffItem {
   id: string;
@@ -42,40 +43,48 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 interface StaffClientProps {
-  initialStaff: StaffItem[];
+  initialStaff?: StaffItem[];
   userRole?: string;
 }
 
-export function StaffClient({ initialStaff, userRole }: StaffClientProps) {
-  const [staffList, setStaffList] = useState<StaffItem[]>(initialStaff);
+export function StaffClient({ userRole }: StaffClientProps) {
+  const {
+    staff: storedStaff,
+    deleteStaff: storeDeleteStaff,
+    cases,
+    consultations,
+    currentUser,
+  } = useApp();
+
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [activeFilter, setActiveFilter] = useState("ALL");
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const isAdmin = userRole === "ADMIN";
+  const isAdmin = (userRole || currentUser?.role) === "ADMIN";
 
   const handleDelete = async () => {
     if (!deletingId) return;
     setIsDeleting(true);
+    setDeleteError(null);
     try {
-      const res = await deleteStaffMember(deletingId);
+      const res = storeDeleteStaff(deletingId);
       if (res.success) {
-        setStaffList((prev) => prev.filter((s) => s.id !== deletingId));
         setDeletingId(null);
       } else {
-        alert(res.error || "فشل حذف العضو");
+        setDeleteError(res.error || "فشل حذف العضو");
       }
     } catch {
-      alert("حدث خطأ أثناء الحذف");
+      setDeleteError("حدث خطأ أثناء الحذف");
     } finally {
       setIsDeleting(false);
     }
   };
 
-  const filteredStaff = staffList.filter((s) => {
+  const filteredStaff = storedStaff.filter((s) => {
     const q = search.trim().toLowerCase();
     const matchesSearch =
       !q ||
@@ -114,9 +123,24 @@ export function StaffClient({ initialStaff, userRole }: StaffClientProps) {
           className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded shadow-xs transition-colors self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>إضافة عضو جديد</span>
+          <span>إضافة عضو جديد (صفحة كاملة)</span>
         </Link>
       </div>
+
+      {deleteError && (
+        <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center justify-between text-xs font-bold">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{deleteError}</span>
+          </div>
+          <button
+            onClick={() => setDeleteError(null)}
+            className="text-red-500 hover:text-red-800 font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between text-xs">
@@ -181,105 +205,113 @@ export function StaffClient({ initialStaff, userRole }: StaffClientProps) {
                   </td>
                 </tr>
               ) : (
-                filteredStaff.map((staff) => (
-                  <tr key={staff.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-700 text-xs shrink-0">
-                          {staff.name.slice(0, 1)}
+                filteredStaff.map((staff) => {
+                  const assignedCases = cases.filter((c) => c.lawyerId === staff.id).length;
+                  const assignedConsultations = consultations.filter((cn) => cn.lawyerId === staff.id).length;
+
+                  return (
+                    <tr key={staff.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-slate-900">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-700 text-xs shrink-0">
+                            {staff.name.slice(0, 1)}
+                          </div>
+                          <div>
+                            <span>{staff.name}</span>
+                            {staff.notes && (
+                              <span className="text-[10px] text-slate-400 block line-clamp-1 font-normal">
+                                {staff.notes}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <span>{staff.name}</span>
-                          {staff.notes && (
-                            <span className="text-[10px] text-slate-400 block line-clamp-1 font-normal">
-                              {staff.notes}
-                            </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-block px-2.5 py-0.5 rounded text-[11px] font-semibold ${
+                            staff.role === "LAWYER"
+                              ? "bg-navy-50 text-navy-900 border border-navy-200"
+                              : staff.role === "SECRETARY"
+                              ? "bg-amber-50 text-amber-800 border border-amber-200"
+                              : staff.role === "ACCOUNTANT"
+                              ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                              : "bg-slate-100 text-slate-700 border border-slate-200"
+                          }`}
+                        >
+                          {ROLE_LABELS[staff.role] || staff.role}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-medium text-slate-700">
+                        {staff.barAssociationNumber ? (
+                          <span className="flex items-center gap-1">
+                            <Shield className="w-3.5 h-3.5 text-navy-700" />
+                            <span>{staff.barAssociationNumber}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-slate-700">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1.5" dir="ltr">
+                            <Phone className="w-3 h-3 text-slate-400" />
+                            <span>{staff.phone}</span>
+                          </div>
+                          {staff.email && (
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500" dir="ltr">
+                              <Mail className="w-3 h-3 text-slate-400" />
+                              <span>{staff.email}</span>
+                            </div>
                           )}
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded text-[11px] font-semibold ${
-                          staff.role === "LAWYER"
-                            ? "bg-navy-50 text-navy-900 border border-navy-200"
-                            : staff.role === "SECRETARY"
-                            ? "bg-amber-50 text-amber-800 border border-amber-200"
-                            : staff.role === "ACCOUNTANT"
-                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                            : "bg-slate-100 text-slate-700 border border-slate-200"
-                        }`}
-                      >
-                        {ROLE_LABELS[staff.role] || staff.role}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-mono font-medium text-slate-700">
-                      {staff.barAssociationNumber ? (
-                        <span className="flex items-center gap-1">
-                          <Shield className="w-3.5 h-3.5 text-navy-700" />
-                          <span>{staff.barAssociationNumber}</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-300">-</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 font-mono text-slate-700">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5" dir="ltr">
-                          <Phone className="w-3 h-3 text-slate-400" />
-                          <span>{staff.phone}</span>
-                        </div>
-                        {staff.email && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-slate-500" dir="ltr">
-                            <Mail className="w-3 h-3 text-slate-400" />
-                            <span>{staff.email}</span>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 font-mono text-slate-600">
-                      {formatDate(staff.hireDate)}
-                    </td>
-                    <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800">
-                      {staff._count?.cases || 0}
-                    </td>
-                    <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800">
-                      {staff._count?.consultations || 0}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
-                          staff.isActive
-                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                            : "bg-red-50 text-red-700 border border-red-200"
-                        }`}
-                      >
-                        {staff.isActive ? "نشط" : "غير نشط"}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Link
-                          href={`/staff/${staff.id}/edit`}
-                          prefetch={true}
-                          className="p-1.5 text-slate-600 hover:text-navy-900 hover:bg-slate-100 rounded transition-colors"
-                          title="تعديل البيانات"
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-slate-600">
+                        {formatDate(staff.hireDate)}
+                      </td>
+                      <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800">
+                        {assignedCases}
+                      </td>
+                      <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800">
+                        {assignedConsultations}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
+                            staff.isActive
+                              ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                              : "bg-red-50 text-red-700 border border-red-200"
+                          }`}
                         >
-                          <Edit className="w-4 h-4" />
-                        </Link>
-                        {isAdmin && (
-                          <button
-                            onClick={() => setDeletingId(staff.id)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="حذف"
+                          {staff.isActive ? "نشط" : "غير نشط"}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Link
+                            href={`/staff/${staff.id}/edit`}
+                            prefetch={true}
+                            className="p-1.5 text-slate-600 hover:text-navy-900 hover:bg-slate-100 rounded transition-colors"
+                            title="تعديل البيانات"
                           >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                            <Edit className="w-4 h-4" />
+                          </Link>
+                          {isAdmin && (
+                            <button
+                              onClick={() => {
+                                setDeleteError(null);
+                                setDeletingId(staff.id);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="حذف"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
