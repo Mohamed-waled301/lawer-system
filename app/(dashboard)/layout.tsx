@@ -16,13 +16,15 @@ export default function DashboardLayout({
         <TopProgressBar />
       </Suspense>
 
-      {/* Fixed Right Sidebar (hidden offscreen on mobile, visible on desktop) */}
+      {/* Slide-out Drawer Menu (Sandwich Menu - 100% responsive across all screen sizes) */}
       <Sidebar />
 
-      {/* Main Content Area (Full width on mobile/tablet, offset by 256px on desktop) */}
-      <div className="mr-0 lg:mr-64 flex-1 flex flex-col min-w-0 transition-all duration-200">
+      {/* Main Content Area - Full 100% Width on ALL devices without permanent sidebar */}
+      <div className="flex-1 flex flex-col min-w-0 w-full">
         <Header />
-        <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">{children}</main>
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+          {children}
+        </main>
       </div>
     </div>
   );
